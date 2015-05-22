@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+ports_file=/tmp/reverse-tunnel-ports
+
+server_port=19999
+local_port=22
+
+while getopts 'vp:P:r:cf:' flag; do
+	case $flag in
+		v ) verbose=true;;
+		p ) local_port=$OPTARG;;
+		P ) server_port=$OPTARG;;
+		r ) remote=$OPTARG;;
+		c ) connect=true;;
+		f ) forward=$OPTARG;;
+	esac
+done
+shift $(($OPTIND-1)); OPTIND=1
+
+usage="$(basename $0) [-c] [-p <22>] [-P <19999>] [-r <ssh login>] <name>"
+
+if [[ -z $remote && $connect != true ]]; then
+	echo "please use -r username@host"
+	echo "$usage"
+	exit 1
+fi
+
+if [[ ! -f "$ports_file" ]]; then
+	touch "$ports_file"
+	chmod 666 "$ports_file"
+fi
+
+remote_username=${remote/@*/}
+remote_host=${remote/*@/}
+
+name=$1
+if [[ -z $name ]]; then
+	if [[ $connect = true ]]; then
+		echo "$(basename $0) -c <name>"
+		echo "available tunnels: "
+		cat "$ports_file" | sed 's/ .*$//'
+		read -p "choose a tunnel: " name
+		if [[ -z $name ]]; then
+			echo "no tunnel chosen. exiting"
+			exit
+		fi
+	else
+		echo "$usage"
+		exit 1
+	fi
+fi
+
+if [[ $verbose = true ]]; then
+  ssh_options_first+=(-v)
+fi
+
+if [[ $connect = true ]]; then
+	echo "connecting through reverse tunnel to $name"
+	read name username port <<< $(cat $ports_file | grep -m1 "^$name")
+
+  ssh_options_last+=(-p $port)
+
+  if [[ -n $forward ]]; then
+    forward_from=${forward/:*/}
+    forward_to=${forward/*:/}
+
+    ssh_options_first+=(-N)
+    ssh_options_first+=(-f)
+
+    echo "forwarding port $forward_from to $forward_to"
+
+    ssh_options_first+=(-L $forward_from:localhost:$forward_to)
+  fi
+
+  ssh ${ssh_options_first[@]} $username@localhost ${ssh_options_last[@]}
+else
+	echo "prep"
+
+	ssh $remote "echo $name $(whoami) $server_port >> $ports_file"
+
+	echo "open tunnel"
+
+	ssh_options_first+=(-o ServerAliveInterval=60)
+	ssh_options_first+=(-R $server_port:localhost:$local_port)
+	ssh_options_first+=(-l $remote_username)
+	ssh_options_first+=(-N)
+	ssh_options_first+=(-f)
+
+  ssh ${ssh_options_first[@]} $remote_host ${ssh_options_last[@]}
+fi
