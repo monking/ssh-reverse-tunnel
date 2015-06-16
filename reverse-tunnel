@@ -5,7 +5,7 @@ ports_file=/tmp/reverse-tunnel-ports
 server_port=19999
 local_port=22
 
-while getopts 'vp:P:r:cf:' flag; do
+while getopts 'vp:P:r:cf:kh' flag; do
 	case $flag in
 		v ) verbose=true;;
 		p ) local_port=$OPTARG;;
@@ -13,13 +13,21 @@ while getopts 'vp:P:r:cf:' flag; do
 		r ) remote=$OPTARG;;
 		c ) connect=true;;
 		f ) forward=$OPTARG;;
+		k ) keepalive=true;;
+		h ) help=true;;
 	esac
 done
 shift $(($OPTIND-1)); OPTIND=1
 
-usage="$(basename $0) [-c] [-p <22>] [-P <19999>] [-r <ssh login>] <name>"
+usage="$(basename $0) [-c] [-p <22>] [-P <19999>] [-r <ssh login>] [-k] <name>
+	-c <number>      connect
+	-p <number>      host port
+	-P <number>      proxy port
+	-r <user@host>   proxy ssh login
+	-k               keepalive
+	-h               show this help"
 
-if [[ -z $remote && $connect != true ]]; then
+if [[ $help = true || ( -z $remote && $connect != true ) ]]; then
 	echo "please use -r username@host"
 	echo "$usage"
 	exit 1
