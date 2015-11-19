@@ -5,9 +5,10 @@ ports_file=/tmp/reverse-tunnel-ports
 server_port=19999
 local_port=22
 
-while getopts 'vp:P:r:cf:kh' flag; do
+while getopts 'vxp:P:r:cf:kh' flag; do
 	case $flag in
 		v ) verbose=true;;
+		x ) dryrun=true;;
 		p ) local_port=$OPTARG;;
 		P ) server_port=$OPTARG;;
 		r ) remote=$OPTARG;;
@@ -94,5 +95,8 @@ else
 	ssh_options_first+=(-N)
 	ssh_options_first+=(-f)
 
+	if [[ $dryrun = true ]]; then
+		echo ssh ${ssh_options_first[@]} $remote_host ${ssh_options_last[@]}
+	fi
   ssh ${ssh_options_first[@]} $remote_host ${ssh_options_last[@]}
 fi
