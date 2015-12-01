@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+
+# config
+
+# TODO: create config file to allow using ports other than 80 & 22 for HTTP & SSH
+http_port=80
+ssh_port=22
+
+# helpers
+
+function _in() { # parts must not contain whitespace
+	needle=$1
+	shift 1
+	haystack=($@)
+	for straw in ${haystack[@]}; do
+		if [[ $needle = $straw ]]; then
+			return 0 # zero is success in bash
+		fi
+	done
+	return 1 # non-zero is an error in bash
+}
+
+function _die() {
+	>&2 echo -e $@
+	exit
+}
+
+# functionality
+
+function _get_aliases_file_path() {
+	aliases_file="$HOME/.bash_aliases"
+	if [[ ! -f "$aliases_file" ]]; then
+		read -ep "aliases file: " aliases_file
+		if [[ ! -f "$aliases_file" ]]; then
+			_die "aliases file doesn't exist: $aliases_file"
+		fi
+	fi
+}
+
+function _add_ssh_config() {
+	local tunnel_server_host tunnel_server_user tunnel_server_nickname tunnel_server_suffix
+
+	if [[ ! -d "$HOME/.ssh" ]]; then
+		mkdir "$HOME/.ssh"
+		chmod 700 "$HOME/.ssh"
+	fi
+
+	tunnel_server_suffix='-host'
+	username_prompt="tunnel server user: "
+	tunnel_server_port=$ssh_port
+	if [[ $1 = target ]]; then
+		tunnel_server_suffix='-target'
+		read -p "port prefix (3 digits): " port_prefix
+		tunnel_server_port=${port_prefix}${ssh_port}
+		username_prompt="tunnel target user: "
+	fi
+
+	read -p "tunnel server nickname: " tunnel_server_nickname
+	read -p "tunnel server host: " tunnel_server_host
+	read -p "$username_prompt" tunnel_server_user
+	tunnel_server_name=${tunnel_server_nickname}${tunnel_server_suffix}
+
+	cat >> "$HOME/.ssh/config" << EOF
+Host $tunnel_server_name
+	User $tunnel_server_user
+	HostName $tunnel_server_host
+	Port $tunnel_server_port
+EOF
+}
+
+function _get_ip_from_hostname() {
+	echo "STUB: get your IP by doing 'ping -c 1 <hostname>' and copying the IP in parentheses."
+}
+
+# commands
+
+function _setup_help() {
+	echo "Available commands are: ${commands[@]}.
+
+	Terms:
+		target: The machine that you want to access.
+		client: The machine from which you want to conect.
+		server: The machine that acts as the junction between your client and your target."
+}
+
+function _setup_target() {
+
+	target_usage="Use 'rt-ssh' and 'rt-http' to open reverse tunnels for those services."
+	if [[ -f "$HOME/.ssh/config" && ! -z "$(grep '^Host .*-host' "$HOME/.ssh/config")" ]]; then
+		_die "It looks like your system is already setup as the target of a reverse tunnel.\n$target_usage"
+	fi
+
+	_add_ssh_config
+
+	_get_aliases_file_path
+
+	read -p "port prefix (3 digits): " port_prefix
+	cat >> "$aliases_file" << EOF
+alias rt-ssh='ssh -R \*:${port_prefix}${ssh_port}:localhost:$ssh_port -N $tunnel_server_name &'
+alias rt-http='ssh -R \*:${port_prefix}${http_port}:localhost:$http_port -N $tunnel_server_name &'
+EOF
+
+	echo "Do '. $aliases_file', or login to your shell again."
+	echo $target_usage
+	echo "Edit $aliases_file and $HOME/.ssh/config if you need to make changes."
+}
+
+function _setup_client_ssh() {
+	if [[ -f "$HOME/.ssh/config" && ! -z "$(grep '^Host .*-target' "$HOME/.ssh/config")" ]]; then
+		_die "It looks like your system is already setup as the client of a reverse tunnel."
+	fi
+
+
+	_add_ssh_config target
+	echo "Do 'ssh $tunnel_server_name' to connect to your tunnel."
+}
+
+function _setup_client_http() {
+	read -p "server IP: " server_ip
+	read -p "port prefix: " port_prefix
+	read -p "target hostname: " hostname
+
+	if [[ -z "$(grep "^[^#]*\\<$hostname\\>" /etc/hosts)" ]]; then
+		echo "About to sudo to add these to your /etc/hosts file."
+		sudo tee -a /etc/hosts << EOF
+$server_ip	$hostname
+EOF
+	else
+		if [[ ! -z "$(grep "^[^#]*\\<$server_ip\\>.*\\<$hostname\\>" /etc/hosts)" ]]; then
+			echo "This host is already setup."
+		else
+			_die "WARNING: This hostname already is pointing to a different IP in your /etc/hosts file."
+		fi
+	fi
+
+	echo "Point your browser to http://$hostname:${port_prefix}${http_port}/."
+}
+
+commands=(
+	help
+	target
+	client_ssh
+	client_http
+)
+
+# initialization
+
+command=$1
+shift 1
+
+[[ ! -z $command ]] && _in $command ${commands[@]} || command=help
+
+_setup_$command $@
