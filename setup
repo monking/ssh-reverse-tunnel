@@ -106,9 +106,9 @@ EOF
 }
 
 function _setup_client_ssh() {
-	if [[ -f "$HOME/.ssh/config" && ! -z "$(grep '^Host .*-target' "$HOME/.ssh/config")" ]]; then
-		_die "It looks like your system is already setup as the client of a reverse tunnel."
-	fi
+	#if [[ -f "$HOME/.ssh/config" && ! -z "$(grep '^Host .*-target' "$HOME/.ssh/config")" ]]; then
+	#	_die "It looks like your system is already setup as the client of a reverse tunnel."
+	#fi
 
 
 	_add_ssh_config target
